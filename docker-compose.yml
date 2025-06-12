@@ -1,0 +1,255 @@
+version: "3.8"
+
+networks:
+  ainovar-network:
+    driver: bridge
+
+volumes:
+  ollama_data:
+  app_data:
+  db_data:
+  traefik_certs:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+  elasticsearch_data:
+
+services:
+  # Proxy reverso - gerencia conexões, SSL e rotas
+  traefik:
+    image: traefik:v2.10
+    container_name: ainovar-traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/config:/etc/traefik/config:ro
+      - traefik_certs:/etc/traefik/acme
+    networks:
+      - ainovar-network
+    labels:
+      - "traefik.enable=true"
+    depends_on:
+      - frontend
+      - api
+
+  # Aplicação Next.js
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ainovar-frontend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - API_URL=http://api:4000
+      - LANG=pt_BR.UTF-8
+      - LC_ALL=pt_BR.UTF-8
+      - LC_CTYPE=pt_BR.UTF-8
+    volumes:
+      - app_data:/app/data
+    networks:
+      - ainovar-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`ainovar.tech`) || Host(`www.ainovar.tech`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+    depends_on:
+      - api
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: "3G"
+
+  # API de Backend
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: ainovar-api
+    restart: unless-stopped
+    command: >
+      sh -c "chmod +x /app/setup-models.sh &&
+             /app/setup-models.sh &&
+             node server.js"
+    environment:
+      - NODE_ENV=production
+      - OLLAMA_HOST=http://ollama:11434
+      - PORT=4000
+      - DB_CONNECTION_STRING=mongodb://db:27017/ainovar
+      - REDIS_URL=redis://redis:6379
+      - LANG=pt_BR.UTF-8
+      - LC_ALL=pt_BR.UTF-8
+      - LC_CTYPE=pt_BR.UTF-8
+    networks:
+      - ainovar-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.ainovar.tech`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.api.loadbalancer.server.port=4000"
+    depends_on:
+      - ollama
+      - db
+      - redis
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: "3G"
+
+  # Serviço Ollama
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ainovar-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - ainovar-network
+    environment:
+      - OLLAMA_ORIGINS=http://api:4000,http://localhost:4000,https://api.ainovar.tech
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: "12G"
+        reservations:
+          memory: "8G"
+
+  # Banco de dados
+  db:
+    image: mongo:6
+    container_name: ainovar-db
+    restart: unless-stopped
+    volumes:
+      - db_data:/data/db
+    networks:
+      - ainovar-network
+    environment:
+      - MONGO_INITDB_DATABASE=ainovar
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "2G"
+          
+  # Redis para cache e anti-scraping
+  redis:
+    image: redis:7-alpine
+    container_name: ainovar-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - ainovar-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
+          
+  # Prometheus para monitoramento de métricas
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ainovar-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus/:/etc/prometheus/
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - ainovar-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.rule=Host(`metrics.ainovar.tech`)"
+      - "traefik.http.routers.prometheus.entrypoints=websecure"
+      - "traefik.http.routers.prometheus.tls.certresolver=letsencrypt"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "1G"
+
+  # Grafana para visualização de métricas
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ainovar-grafana
+    restart: unless-stopped
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning/:/etc/grafana/provisioning/
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin_secure_password
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - ainovar-network
+    depends_on:
+      - prometheus
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`dashboard.ainovar.tech`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls.certresolver=letsencrypt"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "1G"
+
+  # Elasticsearch para logging centralizado
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+    container_name: ainovar-elasticsearch
+    restart: unless-stopped
+    environment:
+      - xpack.security.enabled=false
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - ainovar-network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "1G"
+
+  # Kibana para visualização de logs
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.0
+    container_name: ainovar-kibana
+    restart: unless-stopped
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - ainovar-network
+    depends_on:
+      - elasticsearch
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kibana.rule=Host(`logs.ainovar.tech`)"
+      - "traefik.http.routers.kibana.entrypoints=websecure"
+      - "traefik.http.routers.kibana.tls.certresolver=letsencrypt"
+      - "traefik.http.services.kibana.loadbalancer.server.port=5601"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "1G" 

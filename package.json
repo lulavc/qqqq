@@ -1,0 +1,45 @@
+{
+  "name": "ainovar-tech",
+  "version": "1.0.0",
+  "description": "AInovar Enterprise Platform - AI Consultancy Website",
+  "private": true,
+  "scripts": {
+    "check-encoding": "node scripts/check-encoding.js",
+    "fix-encoding": "node scripts/fix-encoding.js",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:build": "docker-compose build",
+    "install:all": "npm ci && cd frontend && npm ci && cd ../backend && npm ci",
+    "lint:check": "npm run check-encoding",
+    "precommit": "npm run check-encoding"
+  },
+  "workspaces": [
+    "frontend",
+    "backend",
+    "api"
+  ],
+  "keywords": [
+    "ai",
+    "artificial-intelligence",
+    "consultancy",
+    "brazil",
+    "portuguese",
+    "chatbot",
+    "machine-learning"
+  ],
+  "author": "Luiz Henrique Valois Cireno <luizvalois@ainovar.tech>",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "private"
+  }
+}
