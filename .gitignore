@@ -1,0 +1,76 @@
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# testing
+coverage
+.coverage
+__tests__/coverage
+junit.xml
+
+# next.js
+.next/
+out/
+.swc/
+
+# production
+build
+dist
+build/
+
+# misc
+.DS_Store
+*.pem
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+logs
+*.log
+
+# local env files
+.env*.local
+.env
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# cache
+.cache/
+.parcel-cache/
+
+# docker
+.docker/
+docker-compose.override.yml
+
+# storybook
+storybook-static/
+
+# turbo
+.turbo
