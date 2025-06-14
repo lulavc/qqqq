@@ -10,7 +10,7 @@ exports.submitContact = async (req, res) => {
     if (!name || !email || !subject || !message) {
       return res.status(400).json({
         success: false,
-        message: 'Todos os campos são obrigatórios'
+        message: 'All fields are mandatory'
       });
     }
 
@@ -27,14 +27,14 @@ exports.submitContact = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Mensagem enviada com sucesso!',
+      message: 'Message sent successfully!',
       data: contact
     });
   } catch (error) {
     console.error('Error submitting contact form:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao enviar mensagem. Por favor, tente novamente.'
+      message: 'Error sending message. Please try again.'
     });
   }
 };
@@ -51,7 +51,7 @@ exports.getContacts = async (req, res) => {
     console.error('Error fetching contacts:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao buscar mensagens.'
+      message: 'Error fetching messages.'
     });
   }
 };
@@ -71,7 +71,7 @@ exports.updateContactStatus = async (req, res) => {
     if (!contact) {
       return res.status(404).json({
         success: false,
-        message: 'Mensagem não encontrada'
+        message: 'Message not found'
       });
     }
 
@@ -83,7 +83,7 @@ exports.updateContactStatus = async (req, res) => {
     console.error('Error updating contact status:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao atualizar status da mensagem.'
+      message: 'Error updating message status.'
     });
   }
 };
@@ -98,19 +98,19 @@ exports.deleteContact = async (req, res) => {
     if (!contact) {
       return res.status(404).json({
         success: false,
-        message: 'Mensagem não encontrada'
+        message: 'Message not found'
       });
     }
 
     res.status(200).json({
       success: true,
-      message: 'Mensagem excluída com sucesso'
+      message: 'Message deleted successfully'
     });
   } catch (error) {
     console.error('Error deleting contact:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao excluir mensagem.'
+      message: 'Error deleting message.'
     });
   }
-}; 
+};

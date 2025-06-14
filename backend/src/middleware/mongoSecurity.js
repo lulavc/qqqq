@@ -10,7 +10,7 @@ class MongoDBSecurityMiddleware {
   /**
    * Sanitize MongoDB query operators in query parameters
    * Prevents NoSQL injection by detecting and neutralizing MongoDB operators
-   * 
+   *
    * @param {Object} req - Express request object
    * @param {Object} res - Express response object
    * @param {Function} next - Express next function
@@ -20,13 +20,13 @@ class MongoDBSecurityMiddleware {
       // Check if there are query parameters
       if (req.query && Object.keys(req.query).length > 0) {
         // Detect MongoDB operators in query parameters
-        const operators = ['$eq', '$gt', '$gte', '$in', '$lt', '$lte', '$ne', '$nin', '$or', '$and', 
-                          '$not', '$nor', '$exists', '$regex', '$where', '$expr', '$jsonSchema', 
+        const operators = ['$eq', '$gt', '$gte', '$in', '$lt', '$lte', '$ne', '$nin', '$or', '$and',
+                          '$not', '$nor', '$exists', '$regex', '$where', '$expr', '$jsonSchema',
                           '$mod', '$text', '$all', '$elemMatch', '$size', '$type'];
-        
+
         let foundOperator = false;
         const sanitizedQuery = {};
-        
+
         // Traverse all query parameters
         for (const [key, value] of Object.entries(req.query)) {
           // Check if value is string and contains operator
@@ -45,7 +45,7 @@ class MongoDBSecurityMiddleware {
             if (objKeys.some(k => operators.includes(k))) {
               foundOperator = true;
               logger.warn(`Possible NoSQL injection detected in object: ${key} from IP: ${req.ip}`);
-              sanitizedQuery[key] = this._sanitizeObject(value);
+              sanitizedQuery[key] = this._sanitizeObject(value, operators, () => foundOperator = true );
             } else {
               sanitizedQuery[key] = value;
             }
@@ -53,19 +53,20 @@ class MongoDBSecurityMiddleware {
             sanitizedQuery[key] = value;
           }
         }
-        
+
         // Replace the original query with sanitized query
         req.query = sanitizedQuery;
-        
-        // Log potential attack
+
+        // Log potential attack and block if configured
         if (foundOperator && config.SECURITY.BLOCK_NOSQL_INJECTION) {
-          return res.status(400).json({ 
-            error: 'Invalid query parameters', 
+          logger.warn(`Blocking NoSQL injection attempt from IP: ${req.ip}. Query: ${JSON.stringify(req.query)}`);
+          return res.status(400).json({
+            error: 'Invalid query parameters. Potential security violation.',
             code: 'SECURITY_VIOLATION'
           });
         }
       }
-      
+
       // Proceed with the request if no injection or if not blocking
       next();
     } catch (error) {
@@ -73,11 +74,11 @@ class MongoDBSecurityMiddleware {
       next();
     }
   }
-  
+
   /**
    * Sanitize request body for MongoDB operations
    * Prevents NoSQL injection in request bodies
-   * 
+   *
    * @param {Object} req - Express request object
    * @param {Object} res - Express response object
    * @param {Function} next - Express next function
@@ -86,28 +87,29 @@ class MongoDBSecurityMiddleware {
     try {
       // Check if there is a request body
       if (req.body && Object.keys(req.body).length > 0) {
-        const operators = ['$eq', '$gt', '$gte', '$in', '$lt', '$lte', '$ne', '$nin', '$or', '$and', 
-                          '$not', '$nor', '$exists', '$regex', '$where', '$expr', '$jsonSchema', 
+        const operators = ['$eq', '$gt', '$gte', '$in', '$lt', '$lte', '$ne', '$nin', '$or', '$and',
+                          '$not', '$nor', '$exists', '$regex', '$where', '$expr', '$jsonSchema',
                           '$mod', '$text', '$all', '$elemMatch', '$size', '$type'];
-        
-        let foundOperator = false;
+
+        let foundOperatorInBody = false;
         const sanitizedBody = this._sanitizeObject(req.body, operators, (op) => {
-          foundOperator = true;
+          foundOperatorInBody = true;
           logger.warn(`Possible NoSQL injection detected in request body with operator: ${op} from IP: ${req.ip}`);
         });
-        
+
         // Replace the original body with sanitized body
         req.body = sanitizedBody;
-        
-        // Block potential attack
-        if (foundOperator && config.SECURITY.BLOCK_NOSQL_INJECTION) {
-          return res.status(400).json({ 
-            error: 'Invalid request body', 
+
+        // Block potential attack if configured
+        if (foundOperatorInBody && config.SECURITY.BLOCK_NOSQL_INJECTION) {
+          logger.warn(`Blocking NoSQL injection attempt in body from IP: ${req.ip}. Body: ${JSON.stringify(req.body)}`);
+          return res.status(400).json({
+            error: 'Invalid request body. Potential security violation.',
             code: 'SECURITY_VIOLATION'
           });
         }
       }
-      
+
       // Proceed with the request
       next();
     } catch (error) {
@@ -115,7 +117,7 @@ class MongoDBSecurityMiddleware {
       next();
     }
   }
-  
+
   /**
    * Sanitize object recursively
    * @param {Object} obj - Object to sanitize
@@ -127,32 +129,34 @@ class MongoDBSecurityMiddleware {
     if (!obj || typeof obj !== 'object') {
       return obj;
     }
-    
+
     const sanitized = Array.isArray(obj) ? [] : {};
-    
+
     for (const [key, value] of Object.entries(obj)) {
-      // Check if key is an operator
       if (operators && operators.includes(key)) {
         if (onFound) onFound(key);
-        sanitized[this._escapeValue(key)] = this._sanitizeObject(value, operators, onFound);
-      } 
-      // Recursively sanitize nested objects
+        sanitized[this._escapeKey(key)] = this._sanitizeObject(value, operators, onFound);
+      }
       else if (value && typeof value === 'object') {
         sanitized[key] = this._sanitizeObject(value, operators, onFound);
-      } 
-      // Handle string values
+      }
       else if (typeof value === 'string') {
         sanitized[key] = this._escapeValue(value);
-      } 
-      // Pass through other types
+      }
       else {
         sanitized[key] = value;
       }
     }
-    
     return sanitized;
   }
-  
+
+  _escapeKey(key) {
+    if (key.startsWith('$')) {
+      return `_escaped_${key.substring(1)}`;
+    }
+    return key;
+  }
+
   /**
    * Escape potentially dangerous string values
    * @param {string} value - Value to escape
@@ -162,11 +166,9 @@ class MongoDBSecurityMiddleware {
     if (typeof value !== 'string') {
       return value;
     }
-    
-    // Escape MongoDB operators
-    return value.replace(/\$/g, '\\$');
+    return value.replace(/\$/g, '\u0024');
   }
-  
+
   /**
    * Validate MongoDB IDs to prevent injection and errors
    * @param {Object} req - Express request object
@@ -177,22 +179,19 @@ class MongoDBSecurityMiddleware {
   validateMongoId(paramName = 'id') {
     return (req, res, next) => {
       try {
-        // Check if parameter exists
         const id = req.params[paramName] || req.query[paramName] || (req.body && req.body[paramName]);
-        
+
         if (id) {
-          // MongoDB ObjectId validation regex (24 hexadecimal characters)
           const objectIdRegex = /^[0-9a-fA-F]{24}$/;
-          
+
           if (!objectIdRegex.test(id)) {
-            logger.warn(`Invalid MongoDB ObjectId format: ${id} from IP: ${req.ip}`);
+            logger.warn(`Invalid MongoDB ObjectId format: ${id} for param ${paramName} from IP: ${req.ip}`);
             return res.status(400).json({
-              error: `Invalid format for ${paramName}`,
+              error: `Invalid format for ${paramName}. Expected a 24-character hex string.`,
               code: 'INVALID_ID_FORMAT'
             });
           }
         }
-        
         next();
       } catch (error) {
         logger.error(`Error validating MongoDB ObjectId: ${error.message}`);
@@ -200,48 +199,39 @@ class MongoDBSecurityMiddleware {
       }
     };
   }
-  
+
   /**
    * Create a Zod schema validator middleware
-   * @param {z.ZodType} schema - Zod schema to validate against
+   * @param {z.ZodTypeAny} schema - Zod schema to validate against
    * @param {string} source - Source of data to validate ('body', 'query', 'params')
    */
   validateSchema(schema, source = 'body') {
     return (req, res, next) => {
       try {
-        // Get data from the specified source
-        const data = req[source];
-        
-        // Parse and validate data against schema
-        const validatedData = schema.parse(data);
-        
-        // Replace the original data with validated data
+        const dataToValidate = req[source];
+        const validatedData = schema.parse(dataToValidate);
         req[source] = validatedData;
-        
         next();
       } catch (error) {
         if (error instanceof z.ZodError) {
-          // Format Zod validation errors
           const formattedErrors = error.errors.map(err => ({
             field: err.path.join('.'),
-            message: err.message
+            message: err.message,
+            code: err.code
           }));
-          
-          logger.warn(`Validation error from IP ${req.ip}: ${JSON.stringify(formattedErrors)}`);
-          
+          logger.warn(`Validation error for ${source} from IP ${req.ip}: ${JSON.stringify(formattedErrors)}`);
           return res.status(400).json({
             error: 'Validation failed',
             code: 'VALIDATION_ERROR',
             details: formattedErrors
           });
         }
-        
         logger.error(`Unexpected validation error: ${error.message}`);
         next(error);
       }
     };
   }
-  
+
   /**
    * Middleware to protect against MongoDB operator injection in aggregation pipelines
    * @param {Object} req - Express request object
@@ -250,27 +240,25 @@ class MongoDBSecurityMiddleware {
    */
   sanitizeAggregation(req, res, next) {
     try {
-      // Check if there's an aggregation pipeline in the request body
       if (req.body && req.body.pipeline && Array.isArray(req.body.pipeline)) {
-        // Validate the aggregation pipeline
-        const dangerousStages = ['$graphLookup', '$unionWith'];
+        const dangerousStages = ['$graphLookup', '$unionWith', '$out', '$merge', '$function', '$where'];
         const securityRisks = req.body.pipeline.filter(stage => {
           const stageKeys = Object.keys(stage);
           return stageKeys.some(key => dangerousStages.includes(key));
         });
-        
+
         if (securityRisks.length > 0) {
-          logger.warn(`Potentially dangerous aggregation pipeline from IP ${req.ip}: ${JSON.stringify(securityRisks)}`);
-          
+          const riskyStageNames = securityRisks.map(s => Object.keys(s)[0]).join(', ');
+          logger.warn(`Potentially dangerous aggregation pipeline from IP ${req.ip} using stages: ${riskyStageNames}`);
           if (config.SECURITY.BLOCK_DANGEROUS_AGGREGATION) {
+            logger.warn(`Blocking dangerous aggregation attempt from IP: ${req.ip}. Pipeline: ${JSON.stringify(req.body.pipeline)}`);
             return res.status(403).json({
-              error: 'Potentially unsafe aggregation operation',
-              code: 'SECURITY_VIOLATION'
+              error: 'Potentially unsafe aggregation operation detected and blocked.',
+              code: 'SECURITY_VIOLATION_AGGREGATION'
             });
           }
         }
       }
-      
       next();
     } catch (error) {
       logger.error(`Error in aggregation pipeline validation: ${error.message}`);
@@ -282,4 +270,4 @@ class MongoDBSecurityMiddleware {
 // Create singleton instance
 const mongoSecurity = new MongoDBSecurityMiddleware();
 
-module.exports = mongoSecurity; 
+module.exports = mongoSecurity;
