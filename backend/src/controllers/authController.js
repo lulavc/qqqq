@@ -2,21 +2,21 @@ const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
 
-// Registrar novo usuário (apenas admin)
+// Register new user (admin only)
 exports.register = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
 
-    // Verificar se usuário já existe
+    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: 'Email já cadastrado'
+        message: 'Email already registered'
       });
     }
 
-    // Criar usuário
+    // Create user
     const user = await User.create({
       name,
       email,
@@ -24,7 +24,7 @@ exports.register = async (req, res) => {
       role: role || 'editor'
     });
 
-    // Gerar token
+    // Generate token
     const token = jwt.sign(
       { id: user._id, role: user.role },
       config.JWT_SECRET,
@@ -42,42 +42,42 @@ exports.register = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Erro ao registrar usuário:', error);
+    console.error('Error registering user:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao registrar usuário.'
+      message: 'Error registering user.'
     });
   }
 };
 
-// Login do usuário
+// User login
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Verificar se usuário existe
+    // Check if user exists
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Credenciais inválidas'
+        message: 'Invalid credentials'
       });
     }
 
-    // Verificar senha
+    // Check password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({
         success: false,
-        message: 'Credenciais inválidas'
+        message: 'Invalid credentials'
       });
     }
 
-    // Atualizar último login
+    // Update last login
     user.lastLogin = Date.now();
     await user.save();
 
-    // Gerar token
+    // Generate token
     const token = jwt.sign(
       { id: user._id, role: user.role },
       config.JWT_SECRET,
@@ -95,15 +95,15 @@ exports.login = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Erro ao fazer login:', error);
+    console.error('Error during login:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao fazer login.'
+      message: 'Error during login.'
     });
   }
 };
 
-// Obter usuário atual
+// Get current user
 exports.getCurrentUser = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
@@ -111,7 +111,7 @@ exports.getCurrentUser = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'Usuário não encontrado'
+        message: 'User not found'
       });
     }
 
@@ -120,21 +120,21 @@ exports.getCurrentUser = async (req, res) => {
       data: user
     });
   } catch (error) {
-    console.error('Erro ao buscar usuário atual:', error);
+    console.error('Error fetching current user:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao buscar usuário.'
+      message: 'Error fetching user.'
     });
   }
 };
 
-// Atualizar usuário
+// Update user
 exports.updateUser = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
     const updateData = { name, email, role };
 
-    // Atualizar senha apenas se fornecida
+    // Update password only if provided
     if (password) {
       updateData.password = password;
     }
@@ -148,7 +148,7 @@ exports.updateUser = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'Usuário não encontrado'
+        message: 'User not found'
       });
     }
 
@@ -157,10 +157,10 @@ exports.updateUser = async (req, res) => {
       data: user
     });
   } catch (error) {
-    console.error('Erro ao atualizar usuário:', error);
+    console.error('Error updating user:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao atualizar usuário.'
+      message: 'Error updating user.'
     });
   }
-}; 
+};

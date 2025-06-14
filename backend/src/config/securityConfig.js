@@ -1,64 +1,68 @@
 /**
- * Configurações de segurança para o sistema
- * Centraliza todas as configurações relacionadas à segurança da aplicação
+ * Security configurations for the system
+ * Centralizes all security-related settings for the application
  */
 require('dotenv').config();
 
 const securityConfig = {
-  // Configurações gerais de segurança da API
+  // General API security settings
   SECURITY: {
-    // Configurações de proteção para API
+    // API protection settings
     API: {
-      JWT_SECRET: process.env.JWT_SECRET || 'sua-chave-secreta-padrao-substitua-em-producao',
+      JWT_SECRET: process.env.JWT_SECRET || 'your-default-secret-key-replace-in-production',
       TOKEN_EXPIRY: '24h',
-      ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS 
-        ? process.env.ALLOWED_ORIGINS.split(',') 
+      ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(',')
         : ['http://localhost:3000'],
       CORS_OPTIONS: {
         credentials: true,
         exposedHeaders: ['Content-Disposition']
       }
     },
-    
-    // Configurações específicas para API de IA
+
+    // Specific settings for AI API
     AI_API: {
       TOKEN_EXPIRY: '1h',
       CONTENT_FILTERING: {
         ENABLED: true,
-        // Lista de termos que não devem ser permitidos nas requisições à API de IA
+        // List of terms that should not be allowed in requests to the AI API
         RESTRICTED_TERMS: [
-          'senha', 'password', 'credit card', 'cartão de crédito', 'cpf', 'cnpj', 'rg'
+          'password',        // 'senha' translated
+          'credit card',     // 'cartão de crédito' translated
+          'cpf',             // Maintained as is, specific Brazilian document
+          'cnpj',            // Maintained as is, specific Brazilian document
+          'rg'               // Maintained as is, specific Brazilian document
         ]
       }
     },
-    
-    // Configurações de rate limiting
+
+    // Rate limiting settings
     RATE_LIMIT: {
       STANDARD: {
-        windowMs: 15 * 60 * 1000, // 15 minutos
-        max: 100 // Limite padrão por IP
+        windowMs: 15 * 60 * 1000, // 15 minutes
+        max: 100 // Standard limit per IP
       },
       AUTH: {
-        windowMs: 60 * 60 * 1000, // 1 hora
-        max: 20 // Limite para rotas de autenticação
+        windowMs: 60 * 60 * 1000, // 1 hour
+        max: 20 // Limit for authentication routes
       },
       AI_API: {
-        windowMs: 15 * 60 * 1000, // 15 minutos
-        max: 50 // Limite para API de IA (por IP)
+        windowMs: 15 * 60 * 1000, // 15 minutes
+        max: 50 // Limit for AI API (per IP)
       },
       SPECIFIC_LIMITS: {
         '/api/ai/image/generate': {
-          windowMs: 15 * 60 * 1000,
-          max: 10 // Limite mais restritivo para geração de imagens
+          windowMs: 15 * 60 * 1000, // 15 minutes
+          max: 10 // More restrictive limit for image generation
         },
         '/api/auth/login': {
-          windowMs: 15 * 60 * 1000,
-          max: 15 // Limite para tentativas de login
+          windowMs: 15 * 60 * 1000, // 15 minutes
+          max: 15 // Limit for login attempts
         }
       }
     },
-    
-    // Configurações de Content-Security-Policy
+
+    // Content-Security-Policy settings
     CSP: {
       directives: {
         defaultSrc: ["'self'"],
@@ -73,46 +77,46 @@ const securityConfig = {
       }
     }
   },
-  
-  // Configurações para MongoDB
+
+  // Settings for MongoDB
   MONGODB: {
-    // Opções de conexão
+    // Connection options
     CONNECTION_OPTIONS: {
-      // Configurações de segurança para conexão MongoDB
+      // Security settings for MongoDB connection
       useNewUrlParser: true,
       useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
       connectTimeoutMS: 10000,
       socketTimeoutMS: 45000,
       family: 4, // Use IPv4, skip trying IPv6
-      ssl: process.env.NODE_ENV === 'production', // Ativar SSL em produção
+      ssl: process.env.NODE_ENV === 'production', // Enable SSL in production
       sslValidate: process.env.NODE_ENV === 'production',
-      // Opções para retry na conexão
+      // Options for connection retry
       retryWrites: true,
       retryReads: true,
-      // Cache para servidores conhecidos
-      maxPoolSize: 10, // Limite de conexões simultâneas
-      minPoolSize: 2 // Manter pelo menos duas conexões ativas
+      // Cache for known servers
+      maxPoolSize: 10, // Connection pool limit
+      minPoolSize: 2 // Keep at least two active connections
     }
   },
-  
-  // Configurações para criptografia e hashing
+
+  // Settings for encryption and hashing
   CRYPTO: {
-    // Configurações para hashing de senha
+    // Settings for password hashing
     PASSWORD_HASH: {
-      SALT_ROUNDS: 12, // Número de rounds para bcrypt
-      PEPPER: process.env.PASSWORD_PEPPER || 'pepper-secreto-substitua-em-producao'
+      SALT_ROUNDS: 12, // Number of rounds for bcrypt
+      PEPPER: process.env.PASSWORD_PEPPER || 'secret-pepper-replace-in-production'
     },
-    
-    // Configurações para tokens
+
+    // Settings for tokens
     TOKENS: {
       REFRESH_TOKEN_EXPIRY: '7d',
       RESET_PASSWORD_EXPIRY: '1h',
       EMAIL_VERIFICATION_EXPIRY: '24h'
     }
   },
-  
-  // Configurações para modelos de IA
+
+  // Settings for AI models
   AI_MODELS: {
     TEXT: {
       DEFAULT: 'gpt-3.5-turbo',
@@ -131,52 +135,52 @@ const securityConfig = {
       AVAILABLE_MODELS: ['text-embedding-ada-002']
     }
   },
-  
-  // Planos e limites para API de IA
+
+  // Plans and limits for AI API
   AI_PLANS: {
     standard: {
       'text-generation': {
-        limit: 100000, // tokens por mês
-        rateLimit: 50 // requisições por hora
+        limit: 100000, // tokens per month
+        rateLimit: 50 // requests per hour
       },
       'image-generation': {
-        limit: 50, // imagens por mês
-        rateLimit: 10 // requisições por hora
+        limit: 50, // images per month
+        rateLimit: 10 // requests per hour
       },
       'embedding': {
-        limit: 50000, // tokens por mês
-        rateLimit: 100 // requisições por hora
+        limit: 50000, // tokens per month
+        rateLimit: 100 // requests per hour
       }
     },
     premium: {
       'text-generation': {
-        limit: 1000000, // tokens por mês
-        rateLimit: 100 // requisições por hora
+        limit: 1000000, // tokens per month
+        rateLimit: 100 // requests per hour
       },
       'image-generation': {
-        limit: 200, // imagens por mês
-        rateLimit: 30 // requisições por hora
+        limit: 200, // images per month
+        rateLimit: 30 // requests per hour
       },
       'embedding': {
-        limit: 500000, // tokens por mês
-        rateLimit: 300 // requisições por hora
+        limit: 500000, // tokens per month
+        rateLimit: 300 // requests per hour
       }
     },
     enterprise: {
       'text-generation': {
-        limit: -1, // ilimitado
-        rateLimit: 300 // requisições por hora
+        limit: -1, // unlimited
+        rateLimit: 300 // requests per hour
       },
       'image-generation': {
-        limit: -1, // ilimitado
-        rateLimit: 100 // requisições por hora
+        limit: -1, // unlimited
+        rateLimit: 100 // requests per hour
       },
       'embedding': {
-        limit: -1, // ilimitado
-        rateLimit: 1000 // requisições por hora
+        limit: -1, // unlimited
+        rateLimit: 1000 // requests per hour
       }
     }
   }
 };
 
-module.exports = securityConfig; 
+module.exports = securityConfig;
