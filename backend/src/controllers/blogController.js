@@ -29,7 +29,7 @@ exports.createPost = async (req, res) => {
     console.error('Error creating blog post:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao criar post.'
+      message: 'Error creating post.'
     });
   }
 };
@@ -49,7 +49,7 @@ exports.getPublishedPosts = async (req, res) => {
     console.error('Error fetching published posts:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao buscar posts.'
+      message: 'Error fetching posts.'
     });
   }
 };
@@ -69,7 +69,7 @@ exports.getAllPosts = async (req, res) => {
     console.error('Error fetching all posts:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao buscar posts.'
+      message: 'Error fetching posts.'
     });
   }
 };
@@ -84,7 +84,7 @@ exports.getPostBySlug = async (req, res) => {
     if (!post) {
       return res.status(404).json({
         success: false,
-        message: 'Post não encontrado'
+        message: 'Post not found'
       });
     }
 
@@ -96,7 +96,7 @@ exports.getPostBySlug = async (req, res) => {
     console.error('Error fetching post:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao buscar post.'
+      message: 'Error fetching post.'
     });
   }
 };
@@ -105,12 +105,12 @@ exports.getPostBySlug = async (req, res) => {
 exports.updatePost = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, excerpt, content, coverImage, tags, status } = req.body;
+    // const { title, excerpt, content, coverImage, tags, status } = req.body;
 
     // Create new slug if title changed
     const updateData = {
       ...req.body,
-      ...(title && { slug: slugify(title, { lower: true, strict: true }) })
+      ...(req.body.title && { slug: slugify(req.body.title, { lower: true, strict: true }) })
     };
 
     const post = await Blog.findByIdAndUpdate(
@@ -122,7 +122,7 @@ exports.updatePost = async (req, res) => {
     if (!post) {
       return res.status(404).json({
         success: false,
-        message: 'Post não encontrado'
+        message: 'Post not found'
       });
     }
 
@@ -134,7 +134,7 @@ exports.updatePost = async (req, res) => {
     console.error('Error updating post:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao atualizar post.'
+      message: 'Error updating post.'
     });
   }
 };
@@ -149,19 +149,19 @@ exports.deletePost = async (req, res) => {
     if (!post) {
       return res.status(404).json({
         success: false,
-        message: 'Post não encontrado'
+        message: 'Post not found'
       });
     }
 
     res.status(200).json({
       success: true,
-      message: 'Post excluído com sucesso'
+      message: 'Post deleted successfully'
     });
   } catch (error) {
     console.error('Error deleting post:', error);
     res.status(500).json({
       success: false,
-      message: 'Erro ao excluir post.'
+      message: 'Error deleting post.'
     });
   }
-}; 
+};
