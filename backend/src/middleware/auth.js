@@ -15,7 +15,7 @@ exports.protect = async (req, res, next) => {
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: 'Não autorizado. Token não fornecido.'
+        message: 'Unauthorized. Token not provided.'
       });
     }
 
@@ -27,7 +27,7 @@ exports.protect = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Usuário não encontrado.'
+        message: 'User not found.'
       });
     }
 
@@ -38,7 +38,7 @@ exports.protect = async (req, res, next) => {
     console.error('Error in auth middleware:', error);
     res.status(401).json({
       success: false,
-      message: 'Não autorizado. Token inválido.'
+      message: 'Unauthorized. Invalid token.'
     });
   }
 };
@@ -49,9 +49,9 @@ exports.authorize = (...roles) => {
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        message: 'Acesso negado. Permissão insuficiente.'
+        message: 'Access denied. Insufficient permission.'
       });
     }
     next();
   };
-}; 
+};

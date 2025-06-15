@@ -8,72 +8,78 @@ const { ensureUTF8Encoding, ensureUTF8Response } = require('./middleware/encodin
 // Create Express app
 const app = express();
 
-// Configure UTF-8 encoding for proper Portuguese support
-process.env.NODE_OPTIONS = '--max-old-space-size=4096';
+// Configure Node options if necessary (e.g., memory limit)
+// process.env.NODE_OPTIONS = '--max-old-space-size=4096'; // Example: Increase old space size
 
 // Middleware
 app.use(cors({
-  origin: '*', // Permitir qualquer origem para facilitar o desenvolvimento
+  origin: '*', // Allow any origin for development ease. Restrict in production.
   credentials: true
 }));
 
-// Configure JSON parser with UTF-8 support
-app.use(express.json({ 
-  limit: '50mb',
+// Configure JSON parser with UTF-8 support and body verification
+app.use(express.json({
+  limit: '50mb', // Set request size limit
   verify: (req, res, buf) => {
     // Ensure buffer is treated as UTF-8
     if (buf && buf.length) {
-      req.rawBody = buf.toString('utf8');
+      try {
+        // Attempt to parse to ensure it's valid JSON before further processing
+        JSON.parse(buf.toString('utf8'));
+        req.rawBody = buf.toString('utf8');
+      } catch (e) {
+        // If parsing fails, it's not valid JSON or not UTF-8
+        res.status(400).send({ success: false, message: 'Invalid JSON format or encoding. Please use UTF-8.' });
+        throw new Error('Invalid JSON or encoding'); // Stop further processing
+      }
     }
   }
 }));
 
-app.use(express.urlencoded({ 
+app.use(express.urlencoded({
   extended: true,
-  limit: '50mb',
-  parameterLimit: 50000
+  limit: '50mb', // Set URL-encoded data size limit
+  parameterLimit: 50000 // Set parameter limit
 }));
 
-// Apply UTF-8 encoding middleware
-app.use(ensureUTF8Encoding);
-app.use(ensureUTF8Response);
+// Apply UTF-8 encoding middleware to ensure request and response are UTF-8
+app.use(ensureUTF8Encoding); // Ensures incoming request data is handled as UTF-8
+app.use(ensureUTF8Response); // Ensures outgoing response data is UTF-8
 
 // Routes
-app.use('/api', routes);
+app.use('/api', routes); // Mount API routes
 
-// Rota de teste para verificar se o servidor está funcionando
+// Test route to check if the server is running
 app.get('/ping', (req, res) => {
   res.json({ message: 'pong', timestamp: new Date().toISOString() });
 });
 
-// Tenta conectar ao MongoDB com configuração UTF-8, mas continua mesmo se falhar
+// Attempt to connect to MongoDB, continue even if it fails initially
 mongoose.connect(config.MONGODB_URI, {
-  // Configurações para suporte adequado a UTF-8
   useNewUrlParser: true,
   useUnifiedTopology: true,
-  bufferCommands: false,
-  bufferMaxEntries: 0,
-  // Configurar timeout e outras opções
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
+  bufferCommands: false, // Disable buffering, commands fail if not connected
+  bufferMaxEntries: 0,   // Disable buffering for individual operations
+  serverSelectionTimeoutMS: 5000, // Timeout for server selection
+  socketTimeoutMS: 45000, // Timeout for socket inactivity
 })
   .then(() => {
-    console.log('Connected to MongoDB with UTF-8 support');
-    
-    // Configurar codificação UTF-8 no nível da conexão
-    mongoose.connection.db.admin().command({ setParameter: 1, textSearchEnabled: true });
+    console.log('Connected to MongoDB');
+
+    // Optional: Set parameters on MongoDB connection if needed
+    // mongoose.connection.db.admin().command({ setParameter: 1, textSearchEnabled: true });
   })
   .catch((error) => {
     console.error('Error connecting to MongoDB:', error);
-    console.log('Continuing without MongoDB connection...');
+    console.log('Continuing without MongoDB connection for now...'); // Application might still run for routes not needing DB
   });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error(err.stack); // Log error stack for debugging
   res.status(500).json({
     success: false,
-    message: 'Erro interno do servidor'
+    message: 'Internal server error' // Generic error message for client
   });
 });
 

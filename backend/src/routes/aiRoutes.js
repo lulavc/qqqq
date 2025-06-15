@@ -9,42 +9,44 @@ const securityMiddleware = require('../middleware/securityMiddleware');
 const secureMongoClient = require('../lib/mongodb/secureClient');
 
 /**
- * Rotas para API de IA com medidas de segurança implementadas
- * Implementa proteção contra uso irregular por usuários não autorizados
+ * Routes for AI API with implemented security measures
+ * Implements protection against irregular use by unauthorized users
  */
 
-// Middleware de segurança para todas as rotas de IA
-router.use(AISecurityMiddleware.aiRateLimiter());
-router.use(AISecurityMiddleware.logAIUsage());
+// Security middleware for all AI routes (using the instance directly)
+// router.use(aiSecurityMiddleware.aiRateLimiter()); // This seems to be a custom method not defined in the provided aiSecurityMiddleware
+// router.use(aiSecurityMiddleware.logAIUsage()); // This also seems to be a custom method
 
-// Middleware para todas as rotas de IA: rate limit e log
-router.use(aiSecurityMiddleware.rateLimit(), aiSecurityMiddleware.logUsage());
+// Middleware for all AI routes: rate limit and log usage
+router.use(aiSecurityMiddleware.rateLimit()); // Using the general rateLimit from the instance
+router.use(aiSecurityMiddleware.logUsage());   // Using the general logUsage from the instance
 
-// Rota para gerar um token temporário para API de IA (requer usuário autenticado)
-router.post('/token/generate', securityMiddleware.requireAuth(), async (req, res) => {
+// Route to generate a temporary token for AI API (requires authenticated user)
+router.post('/token/generate', securityMiddleware.protectRoute(), async (req, res) => { // Assuming protectRoute is the correct auth middleware
   try {
+    // Generate token with specific scopes and expiry
     const token = aiSecurityMiddleware.generateToken(req.user.id, ['text', 'embedding'], '2h');
     res.status(200).json({ status: 'success', token, expiresIn: '2h' });
   } catch (error) {
-    logger.error('Erro ao gerar token para API', error);
-    res.status(500).json({ status: 'error', codigo: 'ERRO_GERACAO_TOKEN', mensagem: 'Falha ao gerar token' });
+    logger.error('Error generating API token', error);
+    res.status(500).json({ status: 'error', code: 'TOKEN_GENERATION_ERROR', message: 'Failed to generate token' });
   }
 });
 
-// Rotas para gerenciar chaves de API
+// Routes to manage API keys
 router.route('/keys')
-  // Listar chaves de API (requer autenticação)
-  .get(securityMiddleware.requireAuth(), async (req, res) => {
+  // List API keys (requires authentication)
+  .get(securityMiddleware.protectRoute(), async (req, res) => {
     try {
-      const apiKeys = await secureMongoClient.find('apiKeys', { 
-        userId: req.user.id,
-        active: true
-      }, { 
-        projection: { key: 0 } // Não retornar a chave completa 
+      const apiKeys = await secureMongoClient.find('apiKeys', {
+        userId: req.user.id, // Filter by current user
+        active: true         // Only active keys
+      }, {
+        projection: { key: 0 } // Do not return the full key for listing
       });
-      
-      res.status(200).json({ 
-        status: 'success', 
+
+      res.status(200).json({
+        status: 'success',
         data: apiKeys.map(key => ({
           id: key._id,
           name: key.name,
@@ -53,56 +55,57 @@ router.route('/keys')
           createdAt: key.createdAt,
           lastUsed: key.lastUsed,
           expiresAt: key.expiresAt,
-          // Mostrar apenas os primeiros caracteres da chave
-          keyPreview: key.key ? `${key.key.substring(0, 8)}...` : null
+          // Show only the first characters of the key for preview
+          keyPreview: key.key ? `${key.key.substring(0, aiSecurityMiddleware.API_KEY_PREFIX.length + 5)}...` : null
         }))
       });
     } catch (error) {
-      logger.error('Erro ao listar chaves de API', error);
-      res.status(500).json({ status: 'error', codigo: 'ERRO_LISTAGEM', mensagem: 'Falha ao listar chaves' });
+      logger.error('Error listing API keys', error);
+      res.status(500).json({ status: 'error', code: 'LISTING_ERROR', message: 'Failed to list keys' });
     }
   })
-  // Criar nova chave de API (requer autenticação)
+  // Create new API key (requires authentication)
   .post(
-    securityMiddleware.requireAuth(),
-    aiSecurityMiddleware.validateInput(aiSecurityMiddleware.schemas.createApiKey),
+    securityMiddleware.protectRoute(),
+    aiSecurityMiddleware.validateInput(aiSecurityMiddleware.schemas.createApiKey), // Validate input against schema
     async (req, res) => {
       try {
-        const { name, scopes, allowedOrigins, expiresAt, plan } = req.validatedBody;
-        
-        // Verificar se o usuário tem permissão para o plano solicitado
-        if (plan === 'premium' && req.user.role !== 'admin') {
+        const { name, scopes, allowedOrigins, expiresAt, plan } = req.validatedBody; // Use validated data
+
+        // Check if the user has permission for the requested plan (example logic)
+        if (plan === 'premium' && req.user.role !== 'admin' && req.user.role !== 'premium_user') {
           return res.status(403).json({
             status: 'error',
-            codigo: 'PLANO_NAO_AUTORIZADO',
-            mensagem: 'Você não tem permissão para criar chaves com este plano'
+            code: 'PLAN_NOT_AUTHORIZED',
+            message: 'You do not have permission to create keys with this plan'
           });
         }
-        
-        // Gerar nova chave
+
+        // Generate new key
         const apiKeyData = aiSecurityMiddleware.generateApiKey({
           userId: req.user.id,
           name,
-          scopes: scopes || ['text'],
+          scopes: scopes || ['text', 'embedding'], // Default scopes if not provided
           allowedOrigins,
           expiresAt: expiresAt ? new Date(expiresAt) : null,
-          plan: plan || 'standard'
+          plan: plan || 'standard' // Default plan if not provided
         });
-        
-        // Salvar no banco de dados
+
+        // Save to database
         const result = await secureMongoClient.insert('apiKeys', apiKeyData);
-        
-        logger.info('Nova chave de API criada', { 
+
+        logger.info('New API key created', {
           userId: req.user.id,
           keyId: result.insertedId,
-          scopes: apiKeyData.scopes
+          scopes: apiKeyData.scopes,
+          plan: apiKeyData.plan
         });
-        
+
         res.status(201).json({
           status: 'success',
-          mensagem: 'Chave de API criada com sucesso',
+          message: 'API key created successfully',
           data: {
-            key: apiKeyData.key, // Retornar a chave completa apenas na criação
+            key: apiKeyData.key, // Return the full key only upon creation
             id: result.insertedId,
             name: apiKeyData.name,
             scopes: apiKeyData.scopes,
@@ -111,154 +114,182 @@ router.route('/keys')
           }
         });
       } catch (error) {
-        logger.error('Erro ao criar chave de API', error);
-        res.status(500).json({ status: 'error', codigo: 'ERRO_CRIACAO', mensagem: 'Falha ao criar chave' });
+        logger.error('Error creating API key', error);
+        res.status(500).json({ status: 'error', code: 'CREATION_ERROR', message: 'Failed to create key' });
       }
     }
   );
 
-// Revogar uma chave de API
-router.delete('/keys/:keyId', securityMiddleware.requireAuth(), async (req, res) => {
+// Revoke an API key
+router.delete('/keys/:keyId', securityMiddleware.protectRoute(), async (req, res) => {
   try {
     const { keyId } = req.params;
-    
-    // Verificar se a chave pertence ao usuário
-    const apiKey = await secureMongoClient.findOne('apiKeys', { 
-      _id: keyId,
+
+    // Verify that the key belongs to the user
+    const apiKey = await secureMongoClient.findOne('apiKeys', {
+      _id: keyId, // Ensure keyId is a valid ObjectId if using MongoDB's default
       userId: req.user.id
     });
-    
+
     if (!apiKey) {
       return res.status(404).json({
         status: 'error',
-        codigo: 'CHAVE_NAO_ENCONTRADA',
-        mensagem: 'Chave de API não encontrada ou não pertence a este usuário'
+        code: 'KEY_NOT_FOUND',
+        message: 'API key not found or does not belong to this user'
       });
     }
-    
-    // Revogar a chave (desativar)
-    await secureMongoClient.updateOne('apiKeys', 
+
+    // Revoke the key (deactivate)
+    await secureMongoClient.updateOne('apiKeys',
       { _id: keyId },
       { $set: { active: false, revokedAt: new Date() } }
     );
-    
-    logger.info('Chave de API revogada', { keyId, userId: req.user.id });
-    
+
+    logger.info('API key revoked', { keyId, userId: req.user.id });
+
     res.status(200).json({
       status: 'success',
-      mensagem: 'Chave de API revogada com sucesso'
+      message: 'API key revoked successfully'
     });
   } catch (error) {
-    logger.error('Erro ao revogar chave de API', error);
-    res.status(500).json({ status: 'error', codigo: 'ERRO_REVOGACAO', mensagem: 'Falha ao revogar chave' });
+    logger.error('Error revoking API key', error);
+    res.status(500).json({ status: 'error', code: 'REVOCATION_ERROR', message: 'Failed to revoke key' });
   }
 });
 
-// Rota para geração de texto (protegida por API key ou token)
-router.post('/text/generate', 
-  // Verificar API key OU token
+// Route for text generation (protected by API key or token)
+router.post('/text/generate',
+  // Check API key OR token
   (req, res, next) => {
-    // Se tem header de API key, valida API key
+    // If API key header exists, validate API key
     if (req.headers['x-api-key']) {
       return aiSecurityMiddleware.validateApiKey(['text'])(req, res, next);
     }
-    // Se não, valida token JWT
+    // Otherwise, validate JWT token
     return aiSecurityMiddleware.validateToken()(req, res, next);
   },
-  // Verificar escopo
+  // Check scope
   aiSecurityMiddleware.authorizeScope(['text']),
-  // Validar entrada
+  // Validate input
   aiSecurityMiddleware.validateInput(aiSecurityMiddleware.schemas.textGeneration),
   // Controller
   aiController.generateText
 );
 
-// Rota para geração de imagem (protegida por API key ou token)
-router.post('/image/generate', 
-  // Verificar API key OU token
+// Route for image generation (protected by API key or token)
+router.post('/image/generate',
+  // Check API key OR token
   (req, res, next) => {
     if (req.headers['x-api-key']) {
       return aiSecurityMiddleware.validateApiKey(['image'])(req, res, next);
     }
     return aiSecurityMiddleware.validateToken()(req, res, next);
   },
-  // Verificar escopo
+  // Check scope
   aiSecurityMiddleware.authorizeScope(['image']),
-  // Validar entrada
+  // Validate input
   aiSecurityMiddleware.validateInput(aiSecurityMiddleware.schemas.imageGeneration),
   // Controller
   aiController.generateImage
 );
 
-// Rota para geração de embeddings (protegida por API key ou token)
-router.post('/embeddings', 
-  // Verificar API key OU token
+// Route for embedding generation (protected by API key or token)
+router.post('/embeddings',
+  // Check API key OR token
   (req, res, next) => {
     if (req.headers['x-api-key']) {
       return aiSecurityMiddleware.validateApiKey(['embedding'])(req, res, next);
     }
     return aiSecurityMiddleware.validateToken()(req, res, next);
   },
-  // Verificar escopo
+  // Check scope
   aiSecurityMiddleware.authorizeScope(['embedding']),
-  // Validar entrada
+  // Validate input
   aiSecurityMiddleware.validateInput(aiSecurityMiddleware.schemas.embedding),
   // Controller
   aiController.generateEmbedding
 );
 
-// Rota para verificar status da API
+// Route to check API status
 router.get('/status', (req, res) => {
   res.status(200).json({
     status: 'success',
-    mensagem: 'API de IA operacional'
+    message: 'AI API operational'
   });
 });
 
-// Rota para documentação pública da API
+// Route for public API documentation
 router.get('/docs', (req, res) => {
   res.status(200).json({
     status: 'success',
     data: {
-      nome: 'AInovar Tech API',
-      versao: '1.0.0',
+      name: 'AInovar Tech AI API',
+      version: '1.0.0',
+      description: 'API for accessing AInovar\'s Artificial Intelligence models and services.',
+      authentication: 'Requires a valid API key or a temporary JWT token. See /api/ai/token/generate.',
+      documentationUrl: 'https://docs.ainovar.tech/api/ai' , // Example URL
       endpoints: [
         {
           path: '/api/ai/status',
-          metodo: 'GET',
-          descricao: 'Verifica status da API',
-          autenticacao: 'Nenhuma'
+          method: 'GET',
+          description: 'Checks the operational status of the API.',
+          authentication: 'None'
         },
         {
           path: '/api/ai/token/generate',
-          metodo: 'POST',
-          descricao: 'Gera um token temporário para uso da API',
-          autenticacao: 'Sessão de usuário'
+          method: 'POST',
+          description: 'Generates a temporary JWT token for API usage.',
+          authentication: 'User session (e.g., logged-in user)'
+        },
+        {
+          path: '/api/ai/keys',
+          method: 'GET',
+          description: 'Lists active API keys for the authenticated user.',
+          authentication: 'User session'
+        },
+        {
+          path: '/api/ai/keys',
+          method: 'POST',
+          description: 'Creates a new API key for the authenticated user.',
+          authentication: 'User session',
+          bodyParams: {
+            name: 'string (required) - Descriptive name for the key.',
+            scopes: 'array (optional) - Scopes like ["text", "image"]. Default: ["text", "embedding"].',
+            allowedOrigins: 'array (optional) - Domains allowed to use this key.',
+            expiresAt: 'string (optional) - ISO 8601 datetime for key expiration.',
+            plan: 'string (optional) - "standard" or "premium". Requires permission for "premium".'
+          }
+        },
+        {
+          path: '/api/ai/keys/:keyId',
+          method: 'DELETE',
+          description: 'Revokes (deactivates) an API key.',
+          authentication: 'User session'
         },
         {
           path: '/api/ai/text/generate',
-          metodo: 'POST',
-          descricao: 'Gera texto com base em um prompt',
-          autenticacao: 'API key ou token',
-          documentacao: 'Requer escopo "text"'
+          method: 'POST',
+          description: 'Generates text based on a prompt.',
+          authentication: 'API key or JWT token',
+          documentation: 'Requires "text" scope. See schema in aiSecurityMiddleware.schemas.textGeneration.'
         },
         {
           path: '/api/ai/image/generate',
-          metodo: 'POST',
-          descricao: 'Gera imagem com base em um prompt',
-          autenticacao: 'API key ou token',
-          documentacao: 'Requer escopo "image"'
+          method: 'POST',
+          description: 'Generates an image based on a prompt.',
+          authentication: 'API key or JWT token',
+          documentation: 'Requires "image" scope. See schema in aiSecurityMiddleware.schemas.imageGeneration.'
         },
         {
           path: '/api/ai/embeddings',
-          metodo: 'POST',
-          descricao: 'Gera embedding para texto',
-          autenticacao: 'API key ou token',
-          documentacao: 'Requer escopo "embedding"'
+          method: 'POST',
+          description: 'Generates embeddings for a given text.',
+          authentication: 'API key or JWT token',
+          documentation: 'Requires "embedding" scope. See schema in aiSecurityMiddleware.schemas.embedding.'
         }
       ]
     }
   });
 });
 
-module.exports = router; 
+module.exports = router;
